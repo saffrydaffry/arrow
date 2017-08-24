@@ -807,6 +807,81 @@ def write_table(table, where, row_group_size=None, version='1.0',
         writer.close()
 
 
+def write_to_dataset(table, where, partition_cols, root_path,
+                     preserve_index=True, **kwargs):
+    """
+    Wrapper around parquet.write_table for writing a Table to Parquet format by partitions.
+    For each combination of partition columns and values, a subdirectories are created in the following
+    manner:
+
+    root_dir/
+    ├── group1=value1
+    │   ├── group2=value1
+    │   │   └── <result.parquet>
+    │   └── group2=value2
+    │       └── <result.parquet>
+    ├── group1=value2
+    │   └── group2=value1
+    │       └── <result.parquet>
+    ...
+    └── group1=valueN
+        ├── group2=value1
+        │   └── <result.parquet>
+        ...
+        └── group2=valueN
+            └──<result.parquet>
+
+    Parameters
+    ----------
+    table : pyarrow.Table
+    where: string,
+        Name of the parquet file for data saved in each partition
+    parition_cols : list,
+        Column names by which to partition the dataset
+        Columns are partitioned in the order they are given
+    root_path: string,
+        The root directory of the table
+    **kwargs : dict, kwargs for write_table function.
+    """
+    from pyarrow import Table
+
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError("Function requires pandas")
+
+    df = table.to_pandas()
+    groups = df.groupby(partition_cols)
+    data_cols = [col for col in df.columns.tolist() if col not in partition_cols]
+    for partition in partition_cols:
+        try:
+            df[partition] = df[partition].astype(str)
+        except ValueError:
+            raise ValueError("Partitioning columns must be coercible to string")
+
+    if not data_cols:
+        raise ValueError("No data left to save outside partition columns")
+
+    schema = {}
+    for subgroup in groups.indices:
+        sub_df = groups.get_group(subgroup)[data_cols]
+        if not isinstance(subgroup, tuple):
+            subgroup = (subgroup,)
+        subdir = "/".join(
+            ["{colname}={value}".format(colname=name, value=val) for name, val in zip(partition_cols, subgroup)])
+        subtable = Table.from_pandas(sub_df, preserve_index=preserve_index)
+        schema[subdir] = subtable
+
+    if not os.path.isdir(root_path):
+        os.mkdir(root_path)
+
+    for path, data in schema.items():
+        prefix = "/".join([root_path, path])
+        os.makedirs(prefix, exist_ok=True)
+        full_path = "/".join([prefix, where])
+        write_table(data, full_path, **kwargs)
+
+
 def write_metadata(schema, where, version='1.0',
                    use_deprecated_int96_timestamps=False,
                    coerce_timestamps=None):

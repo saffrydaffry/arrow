@@ -1138,3 +1138,32 @@ def test_read_non_existent_file(tmpdir):
         pq.read_table(path)
     except Exception as e:
         assert path in e.args[0]
+
+
+@parquet
+def test_write_partitions(tmpdir):
+    # ARROW-1400
+    import pyarrow.parquet as pq
+
+    output_df = pd.DataFrame({'group1': list('aaabbbbccc'),
+                              'group2': list('eefeffgeee'),
+                              'num': list(range(10)),
+                              'date': np.arange('2017-01-01',
+                                         '2017-01-11',
+                                         dtype='datetime64[D]')})
+
+    cols = output_df.columns.tolist()
+    partition_by = ['group1', 'group2']
+    output_table = pa.Table.from_pandas(output_df)
+    pq.write_to_dataset(output_table, 'tmp.parquet', partition_by, str(tmpdir))
+
+    # Read data back in and compare with original DataFrame
+    # Partitioned columns added to the end of the DataFrame when read
+    # and become 'categorical' dtypes
+    input_table = pq.ParquetDataset(str(tmpdir)).read()
+    input_df = input_table.to_pandas()[cols]
+    for col in partition_by:
+        output_df[col] = output_df[col].astype('category')
+
+    assert output_df.equals(input_df)
+
