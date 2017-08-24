@@ -810,8 +810,10 @@ def write_table(table, where, row_group_size=None, version='1.0',
 def write_to_dataset(table, where, partition_cols, root_path,
                      preserve_index=True, **kwargs):
     """
-    Wrapper around parquet.write_table for writing a Table to Parquet format by partitions.
-    For each combination of partition columns and values, a subdirectories are created in the following
+    Wrapper around parquet.write_table for writing a Table to
+    Parquet format by partitions.
+    For each combination of partition columns and values,
+    a subdirectories are created in the following
     manner:
 
     root_dir/
@@ -845,19 +847,15 @@ def write_to_dataset(table, where, partition_cols, root_path,
     """
     from pyarrow import Table
 
-    try:
-        import pandas as pd
-    except ImportError:
-        raise ImportError("Function requires pandas")
-
     df = table.to_pandas()
     groups = df.groupby(partition_cols)
-    data_cols = [col for col in df.columns.tolist() if col not in partition_cols]
+    data_cols = [col for col in df.columns.tolist()
+                 if col not in partition_cols]
     for partition in partition_cols:
         try:
             df[partition] = df[partition].astype(str)
         except ValueError:
-            raise ValueError("Partitioning columns must be coercible to string")
+            raise ValueError("Partition column must be coercible to string")
 
     if not data_cols:
         raise ValueError("No data left to save outside partition columns")
@@ -868,7 +866,8 @@ def write_to_dataset(table, where, partition_cols, root_path,
         if not isinstance(subgroup, tuple):
             subgroup = (subgroup,)
         subdir = "/".join(
-            ["{colname}={value}".format(colname=name, value=val) for name, val in zip(partition_cols, subgroup)])
+            ["{colname}={value}".format(colname=name, value=val)
+             for name, val in zip(partition_cols, subgroup)])
         subtable = Table.from_pandas(sub_df, preserve_index=preserve_index)
         schema[subdir] = subtable
 

@@ -1148,9 +1148,8 @@ def test_write_partitions(tmpdir):
     output_df = pd.DataFrame({'group1': list('aaabbbbccc'),
                               'group2': list('eefeffgeee'),
                               'num': list(range(10)),
-                              'date': np.arange('2017-01-01',
-                                         '2017-01-11',
-                                         dtype='datetime64[D]')})
+                              'date': np.arange('2017-01-01', '2017-01-11',
+                                                dtype='datetime64[D]')})
     cols = output_df.columns.tolist()
     partition_by = ['group1', 'group2']
     output_table = pa.Table.from_pandas(output_df)
@@ -1168,4 +1167,3 @@ def test_write_partitions(tmpdir):
     for col in partition_by:
         output_df[col] = output_df[col].astype('category')
     assert output_df.equals(input_df)
-
