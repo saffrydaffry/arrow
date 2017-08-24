@@ -1151,19 +1151,21 @@ def test_write_partitions(tmpdir):
                               'date': np.arange('2017-01-01',
                                          '2017-01-11',
                                          dtype='datetime64[D]')})
-
     cols = output_df.columns.tolist()
     partition_by = ['group1', 'group2']
     output_table = pa.Table.from_pandas(output_df)
     pq.write_to_dataset(output_table, 'tmp.parquet', partition_by, str(tmpdir))
+    input_table = pq.ParquetDataset(str(tmpdir)).read()
+    input_df = input_table.to_pandas()
 
     # Read data back in and compare with original DataFrame
     # Partitioned columns added to the end of the DataFrame when read
-    # and become 'categorical' dtypes
-    input_table = pq.ParquetDataset(str(tmpdir)).read()
-    input_df = input_table.to_pandas()[cols]
+    input_df_cols = input_df.columns.tolist()
+    assert partition_by == input_df_cols[-1 * len(partition_by):]
+
+    # Partitioned columns become 'categorical' dtypes
+    input_df = input_df[cols]
     for col in partition_by:
         output_df[col] = output_df[col].astype('category')
-
     assert output_df.equals(input_df)
 
