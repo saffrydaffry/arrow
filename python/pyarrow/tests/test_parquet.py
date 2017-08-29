@@ -1153,7 +1153,7 @@ def test_write_partitions(tmpdir):
     cols = output_df.columns.tolist()
     partition_by = ['group1', 'group2']
     output_table = pa.Table.from_pandas(output_df)
-    pq.write_to_dataset(output_table, 'tmp.parquet', partition_by, str(tmpdir))
+    pq.write_to_dataset(output_table, str(tmpdir), partition_by)
     input_table = pq.ParquetDataset(str(tmpdir)).read()
     input_df = input_table.to_pandas()
 
@@ -1166,4 +1166,34 @@ def test_write_partitions(tmpdir):
     input_df = input_df[cols]
     for col in partition_by:
         output_df[col] = output_df[col].astype('category')
+    assert output_df.equals(input_df)
+
+
+@parquet
+def test_write_no_partitions(tmpdir):
+    # ARROW-1400
+    import pyarrow.parquet as pq
+
+    output_df = pd.DataFrame({'group1': list('aaabbbbccc'),
+                              'group2': list('eefeffgeee'),
+                              'num': list(range(10)),
+                              'date': np.arange('2017-01-01', '2017-01-11',
+                                                dtype='datetime64[D]')})
+    cols = output_df.columns.tolist()
+    output_table = pa.Table.from_pandas(output_df)
+
+    # Without partitions, append files to root_path
+    n = 5
+    for i in range(n):
+        pq.write_to_dataset(output_table, str(tmpdir))
+    output_files = [file for file in os.listdir(str(tmpdir))
+                    if file.endswith(".parquet")]
+    assert len(output_files) == n
+
+    # Deduplicated incoming DataFrame should match
+    # original outgoing Dataframe
+    input_table = pq.ParquetDataset(str(tmpdir)).read()
+    input_df = input_table.to_pandas()
+    input_df = input_df.drop_duplicates()
+    input_df = input_df[cols]
     assert output_df.equals(input_df)
