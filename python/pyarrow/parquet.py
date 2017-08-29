@@ -857,13 +857,12 @@ def write_to_dataset(table, root_path, partition_cols,
         except ValueError:
             raise ValueError("Partition column must be coercible to string")
 
-    if not data_cols:
+    if len(data_cols) == 0:
         raise ValueError("No data left to save outside partition columns")
 
     if not os.path.isdir(root_path):
         os.mkdir(root_path)
 
-    schema = {}
     for subgroup in groups.indices:
         sub_df = groups.get_group(subgroup)[data_cols]
         if not isinstance(subgroup, tuple):
@@ -872,14 +871,11 @@ def write_to_dataset(table, root_path, partition_cols,
             ["{colname}={value}".format(colname=name, value=val)
              for name, val in zip(partition_cols, subgroup)])
         subtable = Table.from_pandas(sub_df, preserve_index=preserve_index)
-        schema[subdir] = subtable
-
-    for path, data in schema.items():
-        prefix = "/".join([root_path, path])
+        prefix = "/".join([root_path, subdir])
         os.makedirs(prefix, exist_ok=True)
         outfile = compat.guid() + ".parquet"
         full_path = "/".join([prefix, outfile])
-        write_table(data, full_path, **kwargs)
+        write_table(subtable, full_path, **kwargs)
 
 
 def write_metadata(schema, where, version='1.0',
