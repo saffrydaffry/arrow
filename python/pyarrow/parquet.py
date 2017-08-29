@@ -807,7 +807,7 @@ def write_table(table, where, row_group_size=None, version='1.0',
         writer.close()
 
 
-def write_to_dataset(table, where, partition_cols, root_path,
+def write_to_dataset(table, root_path, partition_cols,
                      preserve_index=True, **kwargs):
     """
     Wrapper around parquet.write_table for writing a Table to
@@ -819,33 +819,33 @@ def write_to_dataset(table, where, partition_cols, root_path,
     root_dir/
     ├── group1=value1
     │   ├── group2=value1
-    │   │   └── <result.parquet>
+    │   │   └── <uuid>.parquet
     │   └── group2=value2
-    │       └── <result.parquet>
-    ├── group1=value2
-    │   └── group2=value1
-    │       └── <result.parquet>
+    │       └── <uuid>.parquet
     ...
     └── group1=valueN
         ├── group2=value1
-        │   └── <result.parquet>
+        │   └── <uuid>.parquet
         ...
         └── group2=valueN
-            └──<result.parquet>
+            └──<uuid>.parquet
 
     Parameters
     ----------
     table : pyarrow.Table
-    where: string,
-        Name of the parquet file for data saved in each partition
-    parition_cols : list,
+    root_path: string,
+        The root directory of the dataset
+    partition_cols : list,
         Column names by which to partition the dataset
         Columns are partitioned in the order they are given
-    root_path: string,
-        The root directory of the table
+    preserve_index : bool,
+        Parameter for instantiating Table; preserve pandas index or not.
     **kwargs : dict, kwargs for write_table function.
     """
-    from pyarrow import Table
+    from pyarrow import (
+        Table,
+        compat
+    )
 
     df = table.to_pandas()
     groups = df.groupby(partition_cols)
@@ -860,6 +860,9 @@ def write_to_dataset(table, where, partition_cols, root_path,
     if not data_cols:
         raise ValueError("No data left to save outside partition columns")
 
+    if not os.path.isdir(root_path):
+        os.mkdir(root_path)
+
     schema = {}
     for subgroup in groups.indices:
         sub_df = groups.get_group(subgroup)[data_cols]
@@ -871,13 +874,11 @@ def write_to_dataset(table, where, partition_cols, root_path,
         subtable = Table.from_pandas(sub_df, preserve_index=preserve_index)
         schema[subdir] = subtable
 
-    if not os.path.isdir(root_path):
-        os.mkdir(root_path)
-
     for path, data in schema.items():
         prefix = "/".join([root_path, path])
         os.makedirs(prefix, exist_ok=True)
-        full_path = "/".join([prefix, where])
+        outfile = compat.guid() + ".parquet"
+        full_path = "/".join([prefix, outfile])
         write_table(data, full_path, **kwargs)
 
 
