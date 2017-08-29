@@ -807,7 +807,7 @@ def write_table(table, where, row_group_size=None, version='1.0',
         writer.close()
 
 
-def write_to_dataset(table, root_path, partition_cols,
+def write_to_dataset(table, root_path, partition_cols=None,
                      preserve_index=True, **kwargs):
     """
     Wrapper around parquet.write_table for writing a Table to
@@ -833,7 +833,7 @@ def write_to_dataset(table, root_path, partition_cols,
     Parameters
     ----------
     table : pyarrow.Table
-    root_path: string,
+    root_path : string,
         The root directory of the dataset
     partition_cols : list,
         Column names by which to partition the dataset
@@ -847,35 +847,32 @@ def write_to_dataset(table, root_path, partition_cols,
         compat
     )
 
-    df = table.to_pandas()
-    groups = df.groupby(partition_cols)
-    data_cols = [col for col in df.columns.tolist()
-                 if col not in partition_cols]
-    for partition in partition_cols:
-        try:
-            df[partition] = df[partition].astype(str)
-        except ValueError:
-            raise ValueError("Partition column must be coercible to string")
-
-    if len(data_cols) == 0:
-        raise ValueError("No data left to save outside partition columns")
-
     if not os.path.isdir(root_path):
         os.mkdir(root_path)
 
-    for subgroup in groups.indices:
-        sub_df = groups.get_group(subgroup)[data_cols]
-        if not isinstance(subgroup, tuple):
-            subgroup = (subgroup,)
-        subdir = "/".join(
-            ["{colname}={value}".format(colname=name, value=val)
-             for name, val in zip(partition_cols, subgroup)])
-        subtable = Table.from_pandas(sub_df, preserve_index=preserve_index)
-        prefix = "/".join([root_path, subdir])
-        os.makedirs(prefix, exist_ok=True)
+    if partition_cols is not None:
+        df = table.to_pandas()
+        partition_keys = [df[col] for col in partition_cols]
+        data_df = df.drop(partition_cols, axis='columns')
+        data_cols = df.columns.drop(partition_cols)
+        if len(data_cols) == 0:
+            raise ValueError("No data left to save outside partition columns")
+        for keys, subgroup in data_df.groupby(partition_keys):
+            if not isinstance(keys, tuple):
+                keys = (keys,)
+            subdir = "/".join(
+                ["{colname}={value}".format(colname=name, value=val)
+                 for name, val in zip(partition_cols, keys)])
+            subtable = Table.from_pandas(subgroup, preserve_index=preserve_index)
+            prefix = "/".join([root_path, subdir])
+            os.makedirs(prefix, exist_ok=True)
+            outfile = compat.guid() + ".parquet"
+            full_path = "/".join([prefix, outfile])
+            write_table(subtable, full_path, **kwargs)
+    else:
         outfile = compat.guid() + ".parquet"
-        full_path = "/".join([prefix, outfile])
-        write_table(subtable, full_path, **kwargs)
+        full_path = "/".join([root_path, outfile])
+        write_table(table, full_path, **kwargs)
 
 
 def write_metadata(schema, where, version='1.0',
