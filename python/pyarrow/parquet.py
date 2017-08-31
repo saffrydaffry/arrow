@@ -808,7 +808,7 @@ def write_table(table, where, row_group_size=None, version='1.0',
 
 
 def write_to_dataset(table, root_path, partition_cols=None,
-                     preserve_index=True, **kwargs):
+                     filesystem=None, preserve_index=True, **kwargs):
     """
     Wrapper around parquet.write_table for writing a Table to
     Parquet format by partitions.
@@ -835,6 +835,9 @@ def write_to_dataset(table, root_path, partition_cols=None,
     table : pyarrow.Table
     root_path : string,
         The root directory of the dataset
+    filesystem : FileSystem, default None
+        If nothing passed, paths assumed to be found in the local on-disk
+        filesystem
     partition_cols : list,
         Column names by which to partition the dataset
         Columns are partitioned in the order they are given
@@ -847,8 +850,13 @@ def write_to_dataset(table, root_path, partition_cols=None,
         compat
     )
 
-    if not os.path.isdir(root_path):
-        os.mkdir(root_path)
+    if filesystem is None:
+        fs = LocalFileSystem.get_instance()
+    else:
+        fs = _ensure_filesystem(filesystem)
+
+    if not fs.isdir(root_path):
+        fs.mkdir(root_path)
 
     if partition_cols is not None:
         df = table.to_pandas()
@@ -865,14 +873,16 @@ def write_to_dataset(table, root_path, partition_cols=None,
                  for name, val in zip(partition_cols, keys)])
             subtable = Table.from_pandas(subgroup, preserve_index=preserve_index)
             prefix = "/".join([root_path, subdir])
-            os.makedirs(prefix, exist_ok=True)
+            fs.mkdir(prefix)
             outfile = compat.guid() + ".parquet"
             full_path = "/".join([prefix, outfile])
-            write_table(subtable, full_path, **kwargs)
+            with fs.open(full_path, 'wb') as f:
+                write_table(subtable, f, **kwargs)
     else:
         outfile = compat.guid() + ".parquet"
         full_path = "/".join([root_path, outfile])
-        write_table(table, full_path, **kwargs)
+        with fs.open(full_path, 'wb') as f:
+            write_table(table, f, **kwargs)
 
 
 def write_metadata(schema, where, version='1.0',
